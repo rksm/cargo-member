@@ -1,11 +1,11 @@
 #![warn(rust_2018_idioms)]
 
+use camino::Utf8Path as Path;
 use cargo_metadata::{Metadata, MetadataCommand};
 use difference::assert_diff;
 use duct::cmd;
 use std::{
     env, fs, io,
-    path::Path,
     str::{self, Utf8Error},
 };
 use tempdir::TempDir;
@@ -14,32 +14,30 @@ use termcolor::NoColor;
 #[test]
 fn cp() -> anyhow::Result<()> {
     let tempdir = TempDir::new("cargo-member-test-cp")?;
+    let tempdir_path = Path::from_path(tempdir.path()).expect("invalid utf8 path");
 
     let expected_stderr = EXPECTED_STDERR
-        .replace(
-            "{{src}}",
-            &tempdir.path().join("ws").join("b").to_string_lossy(),
-        )
-        .replace("{{dst}}", &tempdir.path().join("b").to_string_lossy());
+        .replace("{{src}}", tempdir_path.join("ws").join("b").as_ref())
+        .replace("{{dst}}", tempdir_path.join("b").as_ref());
 
-    fs::create_dir(tempdir.path().join("ws"))?;
-    fs::write(tempdir.path().join("ws").join("Cargo.toml"), MANIFEST)?;
-    cargo_new(&tempdir.path().join("ws").join("a"))?;
-    cargo_new(&tempdir.path().join("ws").join("b"))?;
-    let metadata = cargo_metadata(&tempdir.path().join("ws").join("Cargo.toml"), &[])?;
+    fs::create_dir(tempdir_path.join("ws"))?;
+    fs::write(tempdir_path.join("ws").join("Cargo.toml"), MANIFEST)?;
+    cargo_new(&tempdir_path.join("ws").join("a"))?;
+    cargo_new(&tempdir_path.join("ws").join("b"))?;
+    let metadata = cargo_metadata(&tempdir_path.join("ws").join("Cargo.toml"), &[])?;
 
     let mut stderr = vec![];
 
-    cargo_member::Cp::from_metadata(&metadata, "b", &tempdir.path().join("b"))
+    cargo_member::Cp::from_metadata(&metadata, "b", &tempdir_path.join("b"))
         .dry_run(false)
         .stderr(NoColor::new(&mut stderr))
         .exec()?;
 
-    assert_manifest(&tempdir.path().join("ws").join("Cargo.toml"), MANIFEST)?;
+    assert_manifest(&tempdir_path.join("ws").join("Cargo.toml"), MANIFEST)?;
     assert_stderr(&stderr, &expected_stderr)?;
-    cargo_metadata(&tempdir.path().join("ws").join("Cargo.toml"), &["--locked"])?;
-    cargo_metadata(&tempdir.path().join("b").join("Cargo.toml"), &["--locked"]).unwrap_err();
-    cargo_metadata(&tempdir.path().join("b").join("Cargo.toml"), &[])?;
+    cargo_metadata(&tempdir_path.join("ws").join("Cargo.toml"), &["--locked"])?;
+    cargo_metadata(&tempdir_path.join("b").join("Cargo.toml"), &["--locked"]).unwrap_err();
+    cargo_metadata(&tempdir_path.join("b").join("Cargo.toml"), &[])?;
     return Ok(());
 
     static MANIFEST: &str = r#"[workspace]

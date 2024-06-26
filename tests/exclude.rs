@@ -1,11 +1,11 @@
 #![warn(rust_2018_idioms)]
 
+use camino::Utf8Path as Path;
 use cargo_metadata::{Metadata, MetadataCommand};
 use difference::assert_diff;
 use duct::cmd;
 use std::{
     env, fs, io,
-    path::Path,
     str::{self, Utf8Error},
 };
 use tempdir::TempDir;
@@ -14,23 +14,24 @@ use termcolor::NoColor;
 #[test]
 fn normal() -> anyhow::Result<()> {
     let tempdir = TempDir::new("cargo-member-test-exclude-normal")?;
+    let tempdir_path = Path::from_path(tempdir.path()).expect("invalid utf8 path");
 
-    fs::write(tempdir.path().join("Cargo.toml"), ORIGINAL)?;
-    cargo_new(&tempdir.path().join("a"))?;
-    cargo_new(&tempdir.path().join("b"))?;
-    cargo_new(&tempdir.path().join("c"))?;
-    let metadata = cargo_metadata(&tempdir.path().join("Cargo.toml"), &[])?;
+    fs::write(tempdir_path.join("Cargo.toml"), ORIGINAL)?;
+    cargo_new(&tempdir_path.join("a"))?;
+    cargo_new(&tempdir_path.join("b"))?;
+    cargo_new(&tempdir_path.join("c"))?;
+    let metadata = cargo_metadata(&tempdir_path.join("Cargo.toml"), &[])?;
 
     let mut stderr = vec![];
 
-    cargo_member::Exclude::from_metadata(&metadata, &[tempdir.path().join("b")], &["c"])
+    cargo_member::Exclude::from_metadata(&metadata, [tempdir_path.join("b")], ["c"])
         .dry_run(false)
         .stderr(NoColor::new(&mut stderr))
         .exec()?;
 
-    assert_manifest(&tempdir.path().join("Cargo.toml"), EXPECTED_MANIFEST)?;
+    assert_manifest(&tempdir_path.join("Cargo.toml"), EXPECTED_MANIFEST)?;
     assert_stderr(&stderr, EXPECTED_STDERR)?;
-    cargo_metadata(&tempdir.path().join("Cargo.toml"), &["--locked"])?;
+    cargo_metadata(&tempdir_path.join("Cargo.toml"), &["--locked"])?;
     return Ok(());
 
     static ORIGINAL: &str = r#"[workspace]
@@ -53,23 +54,24 @@ exclude = ["b", "c"]
 #[test]
 fn dry_run() -> anyhow::Result<()> {
     let tempdir = TempDir::new("cargo-member-test-exclude-dry-run")?;
+    let tempdir_path = Path::from_path(tempdir.path()).expect("invalid utf8 path");
 
-    fs::write(tempdir.path().join("Cargo.toml"), MANIFEST)?;
-    cargo_new(&tempdir.path().join("a"))?;
-    cargo_new(&tempdir.path().join("b"))?;
-    cargo_new(&tempdir.path().join("c"))?;
-    let metadata = cargo_metadata(&tempdir.path().join("Cargo.toml"), &[])?;
+    fs::write(tempdir_path.join("Cargo.toml"), MANIFEST)?;
+    cargo_new(&tempdir_path.join("a"))?;
+    cargo_new(&tempdir_path.join("b"))?;
+    cargo_new(&tempdir_path.join("c"))?;
+    let metadata = cargo_metadata(&tempdir_path.join("Cargo.toml"), &[])?;
 
     let mut stderr = vec![];
 
-    cargo_member::Exclude::from_metadata(&metadata, &[tempdir.path().join("b")], &["c"])
+    cargo_member::Exclude::from_metadata(&metadata, [tempdir_path.join("b")], ["c"])
         .dry_run(true)
         .stderr(NoColor::new(&mut stderr))
         .exec()?;
 
-    assert_manifest(&tempdir.path().join("Cargo.toml"), MANIFEST)?;
+    assert_manifest(&tempdir_path.join("Cargo.toml"), MANIFEST)?;
     assert_stderr(&stderr, EXPECTED_STDERR)?;
-    cargo_metadata(&tempdir.path().join("Cargo.toml"), &["--locked"])?;
+    cargo_metadata(&tempdir_path.join("Cargo.toml"), &["--locked"])?;
     return Ok(());
 
     static MANIFEST: &str = r#"[workspace]

@@ -1,11 +1,11 @@
 #![warn(rust_2018_idioms)]
 
+use camino::Utf8Path as Path;
 use cargo_metadata::MetadataCommand;
 use difference::assert_diff;
 use duct::cmd;
 use std::{
     env, fs, io,
-    path::Path,
     str::{self, Utf8Error},
 };
 use tempdir::TempDir;
@@ -14,26 +14,27 @@ use termcolor::NoColor;
 #[test]
 fn focus() -> anyhow::Result<()> {
     let tempdir = TempDir::new("cargo-member-test-focus")?;
+    let tempdir_path = Path::from_path(tempdir.path()).expect("invalid utf8 path");
 
-    fs::write(tempdir.path().join("Cargo.toml"), ORIGINAL)?;
-    cargo_new(&tempdir.path().join("a"))?;
-    cargo_new(&tempdir.path().join("b"))?;
-    cargo_metadata(&tempdir.path().join("Cargo.toml"), &[])?;
+    fs::write(tempdir_path.join("Cargo.toml"), ORIGINAL)?;
+    cargo_new(&tempdir_path.join("a"))?;
+    cargo_new(&tempdir_path.join("b"))?;
+    cargo_metadata(&tempdir_path.join("Cargo.toml"), &[])?;
 
     let mut stderr = vec![];
 
-    cargo_member::Focus::new(tempdir.path(), &tempdir.path().join("a"))
+    cargo_member::Focus::new(tempdir_path, &tempdir_path.join("a"))
         .dry_run(false)
         .offline(true)
         .stderr(NoColor::new(&mut stderr))
         .exec()?;
 
-    assert_manifest(&tempdir.path().join("Cargo.toml"), EXPECTED_MANIFEST)?;
+    assert_manifest(&tempdir_path.join("Cargo.toml"), EXPECTED_MANIFEST)?;
     assert_stderr(
         &stderr,
-        &EXPECTED_STDERR.replace("{}", &tempdir.path().join("Cargo.lock").to_string_lossy()),
+        &EXPECTED_STDERR.replace("{}", tempdir_path.join("Cargo.lock").as_ref()),
     )?;
-    cargo_metadata(&tempdir.path().join("Cargo.toml"), &["--locked"])?;
+    cargo_metadata(&tempdir_path.join("Cargo.toml"), &["--locked"])?;
     return Ok(());
 
     static ORIGINAL: &str = r#"[workspace]
