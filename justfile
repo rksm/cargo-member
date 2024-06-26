@@ -1,8 +1,11 @@
 default:
     just --list
 
+install:
+    cargo install --path .
+
 test:
     cargo nextest run
 
-install:
-    cargo install --path .
+test-watch:
+    fd -e rs | entr -r just test

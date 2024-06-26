@@ -1,0 +1,8 @@
+---
+source: tests/include.rs
+expression: "String::from_utf8_lossy(&stderr)"
+---
+warning: Skipping dependency "bitflags": version mismatch
+      Adding "b" to `workspace.members`
+    Removing "b" from `workspace.exclude`
+    Updating <Cargo.lock>

@@ -1,0 +1,8 @@
+---
+source: tests/include.rs
+expression: "String::from_utf8_lossy(&stderr)"
+---
+      Adding "b" to `workspace.members`
+    Removing "b" from `workspace.exclude`
+warning: `workspace` unchanged
+warning: not modifying the manifest due to dry run

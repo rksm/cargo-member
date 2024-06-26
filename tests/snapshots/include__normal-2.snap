@@ -1,0 +1,10 @@
+---
+source: tests/include.rs
+expression: "fs::read_to_string(tempdir_path.join(\"Cargo.toml\")).unwrap()"
+---
+[workspace]
+members = ["a", "b"]
+exclude = []
+[workspace.dependencies]
+bitflags = "2.6.0"
+rand = "0.8"

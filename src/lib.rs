@@ -1,10 +1,10 @@
-#![warn(rust_2018_idioms)]
-
 #[doc(hidden)]
 pub mod cli;
+mod deps;
 mod fs;
 
 use anyhow::{anyhow, bail, ensure, Context as _};
+use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use cargo_metadata::{Metadata, MetadataCommand, Package, Resolve};
 use easy_ext::ext;
 use ignore::{Walk, WalkBuilder};
@@ -17,7 +17,6 @@ use std::{
     fmt::{self, Debug, Display},
     io::{self, Sink},
     ops::Deref,
-    path::{Path, PathBuf},
     process::{Command, Stdio},
     slice, str, vec,
 };
@@ -89,14 +88,15 @@ impl<W: WriteColor> Include<W> {
         let modified = paths.iter().try_fold(false, |acc, path| {
             if !(force || path.join("Cargo.toml").exists()) {
                 return Err(
-                    anyhow!("`{}` does not exist", path.join("Cargo.toml").display()).context(
-                        format!(
-                            "`{}` does not seem to be a package. enable `--force` to add",
-                            path.display(),
-                        ),
-                    ),
+                    anyhow!("`{}` does not exist", path.join("Cargo.toml")).context(format!(
+                        "`{}` does not seem to be a package. enable `--force` to add",
+                        path,
+                    )),
                 );
             }
+
+            deps::workspaceify_deps(&mut stderr, &possibly_empty_workspace_root, path, dry_run)?;
+
             modify_members(
                 &possibly_empty_workspace_root,
                 &[path],
@@ -116,10 +116,7 @@ impl<W: WriteColor> Include<W> {
         if dry_run {
             stderr.warn("not modifying the manifest due to dry run")?;
         } else if paths.iter().all(|p| p.exists()) {
-            stderr.status(
-                "Updating",
-                possibly_empty_workspace_root.join("Cargo.lock").display(),
-            )?;
+            stderr.status("Updating", possibly_empty_workspace_root.join("Cargo.lock"))?;
 
             cargo_metadata(
                 Some(&possibly_empty_workspace_root.join("Cargo.toml")),
@@ -211,6 +208,8 @@ impl<W: WriteColor> Exclude<W> {
         let (workspace_root, paths) = (workspace_root?, paths?);
 
         let modified = paths.iter().try_fold(false, |acc, path| {
+            deps::unworkspaceify_deps(&mut stderr, &workspace_root, path, dry_run)?;
+
             modify_members(
                 &workspace_root,
                 &[],
@@ -230,7 +229,7 @@ impl<W: WriteColor> Exclude<W> {
         if dry_run {
             stderr.warn("not modifying the manifest due to dry run")?;
         } else if !is_empty_workspace(&workspace_root.join("Cargo.toml"))? {
-            stderr.status("Updating", workspace_root.join("Cargo.lock").display())?;
+            stderr.status("Updating", workspace_root.join("Cargo.lock"))?;
 
             cargo_metadata(
                 Some(&workspace_root.join("Cargo.toml")),
@@ -339,7 +338,7 @@ impl<W: WriteColor> Deactivate<W> {
         if dry_run {
             stderr.warn("not modifying the manifest due to dry run")?;
         } else if !is_empty_workspace(&workspace_root.join("Cargo.toml"))? {
-            stderr.status("Updating", workspace_root.join("Cargo.lock").display())?;
+            stderr.status("Updating", workspace_root.join("Cargo.lock"))?;
 
             cargo_metadata(
                 Some(&workspace_root.join("Cargo.toml")),
@@ -417,7 +416,11 @@ impl<W: WriteColor> Focus<W> {
             match entry {
                 Ok(entry) => {
                     if entry.path().ends_with("Cargo.toml") {
-                        let dir = entry.path().parent().expect("should not empty");
+                        let dir = entry
+                            .path()
+                            .parent()
+                            .expect("should not empty")
+                            .try_into()?;
                         if ![&*workspace_root, &*path].contains(&dir) {
                             targets.push(dir.to_owned());
                         }
@@ -441,7 +444,7 @@ impl<W: WriteColor> Focus<W> {
         if dry_run {
             stderr.warn("not modifying `workspace` due to dry run")?;
         } else {
-            stderr.status("Updating", workspace_root.join("Cargo.lock").display())?;
+            stderr.status("Updating", workspace_root.join("Cargo.lock"))?;
 
             cargo_metadata(
                 Some(&workspace_root.join("Cargo.toml")),
@@ -470,6 +473,7 @@ pub struct New<W> {
 }
 
 impl New<NoColor<Sink>> {
+    #[allow(clippy::self_named_constructors)]
     pub fn new(possibly_empty_workspace_root: &Path, path: &Path) -> Self {
         Self {
             possibly_empty_workspace_root: ensure_absolute(possibly_empty_workspace_root),
@@ -564,7 +568,7 @@ impl<W: WriteColor> New<W> {
 
         let (possibly_empty_workspace_root, path) = (possibly_empty_workspace_root?, path?);
 
-        Include::new(&possibly_empty_workspace_root, &[&path])
+        Include::new(&possibly_empty_workspace_root, [&path])
             .force(true)
             .dry_run(dry_run)
             .stderr(&mut stderr)
@@ -607,10 +611,7 @@ impl<W: WriteColor> New<W> {
                 );
             }
 
-            stderr.status(
-                "Updating",
-                possibly_empty_workspace_root.join("Cargo.lock").display(),
-            )?;
+            stderr.status("Updating", possibly_empty_workspace_root.join("Cargo.lock"))?;
 
             cargo_metadata(None, false, false, offline, &possibly_empty_workspace_root)?;
         }
@@ -750,31 +751,25 @@ impl<W: WriteColor> Cp<W> {
             dst
         };
 
-        ensure!(!dst.exists(), "`{}` exists", dst.display());
+        ensure!(!dst.exists(), "`{}` exists", dst);
 
         let mut cargo_toml = crate::fs::read_toml_edit(src.join("Cargo.toml"))
-            .with_context(|| format!("`{}` does not seem to be a package", src.display()))?;
+            .with_context(|| format!("`{}` does not seem to be a package", src))?;
         if let Some(package) = cargo_toml["package"].as_table_mut() {
             package.remove("workspace");
             if !no_rename {
                 let file_name = dst.file_name().expect("should exist");
-                let file_name = file_name
-                    .to_str()
-                    .with_context(|| format!("{:?} is not valid UTF-8", file_name))?;
                 package["name"] = toml_edit::value(file_name);
             }
         }
 
-        stderr.status(
-            "Copying",
-            format!("`{}` to `{}`", src.display(), dst.display()),
-        )?;
+        stderr.status("Copying", format!("`{}` to `{}`", src, dst))?;
 
         let src_root = src;
         for src in WalkBuilder::new(&src_root).hidden(false).build() {
             match src {
                 Ok(src) => {
-                    let src = src.path();
+                    let src = Path::from_path(src.path()).expect("not a valid utf-8 path");
                     if !(src.is_dir()
                         || src == src_root.join("Cargo.toml")
                         || src.starts_with(src_root.join(".git")))
@@ -801,7 +796,7 @@ impl<W: WriteColor> Cp<W> {
         {
             stderr.status_with_color(
                 "Found",
-                format!("workspace at {}", dst_workspace_root.display()),
+                format!("workspace at {}", dst_workspace_root),
                 termcolor::Color::Cyan,
             )?;
 
@@ -910,17 +905,15 @@ impl<W: WriteColor> Rm<W> {
         let modified = paths.iter().try_fold(false, |acc, path| {
             if !(force || path.join("Cargo.toml").exists()) {
                 return Err(
-                    anyhow!("`{}` does not exist", path.join("Cargo.toml").display()).context(
-                        format!(
-                            "`{}` does not seem to be a package. enable `--force` to remove",
-                            path.display(),
-                        ),
-                    ),
+                    anyhow!("`{}` does not exist", path.join("Cargo.toml")).context(format!(
+                        "`{}` does not seem to be a package. enable `--force` to remove",
+                        path,
+                    )),
                 );
             }
             stderr.status_with_color(
                 "Removing",
-                format!("directory `{}`", path.display()),
+                format!("directory `{}`", path),
                 termcolor::Color::Red,
             )?;
             crate::fs::remove_dir_all(path, dry_run)?;
@@ -943,7 +936,7 @@ impl<W: WriteColor> Rm<W> {
         if dry_run {
             stderr.warn("not modifying the manifest due to dry run")?;
         } else if !is_empty_workspace(&workspace_root.join("Cargo.toml"))? {
-            stderr.status("Updating", workspace_root.join("Cargo.lock").display())?;
+            stderr.status("Updating", workspace_root.join("Cargo.lock"))?;
 
             cargo_metadata(
                 Some(&workspace_root.join("Cargo.toml")),
@@ -1035,7 +1028,7 @@ impl<W: WriteColor> Mv<W> {
             .stderr(&mut stderr)
             .exec()?;
 
-        Rm::new(&workspace_root, &[src])
+        Rm::new(&workspace_root, [src])
             .dry_run(dry_run)
             .stderr(stderr)
             .exec()
@@ -1044,7 +1037,7 @@ impl<W: WriteColor> Mv<W> {
 
 fn ensure_absolute(path: impl AsRef<Path>) -> anyhow::Result<PathBuf> {
     let path = path.as_ref();
-    ensure!(path.is_absolute(), "must be absolute: {}", path.display());
+    ensure!(path.is_absolute(), "must be absolute: {}", path);
     Ok(path.to_owned())
 }
 
@@ -1091,7 +1084,7 @@ fn cargo_metadata(
         cargo_metadata::Error::CargoMetadata { stderr } => anyhow!("{}", stderr.trim_end()),
         err => err.into(),
     })?;
-    debug!("workspace-root: {}", metadata.workspace_root.display());
+    debug!("workspace-root: {}", metadata.workspace_root);
     Ok(metadata)
 }
 
@@ -1115,10 +1108,7 @@ fn modify_members<'a>(
     .flatten()
     .any(|&p| p == possibly_empty_workspace_root)
     {
-        bail!(
-            "`{}` is the workspace root",
-            possibly_empty_workspace_root.display()
-        );
+        bail!("`{}` is the workspace root", possibly_empty_workspace_root);
     }
 
     let manifest_path = possibly_empty_workspace_root.join("Cargo.toml");
@@ -1138,11 +1128,8 @@ fn modify_members<'a>(
         ),
     ] {
         let relative_to_root = |path: &'a Path| -> _ {
-            let path = path
-                .strip_prefix(possibly_empty_workspace_root)
-                .unwrap_or(path);
-            path.to_str()
-                .with_context(|| format!("{:?} is not valid UTF-8 path", path))
+            path.strip_prefix(possibly_empty_workspace_root)
+                .unwrap_or(path)
         };
 
         let same_paths = |value: &toml_edit::Value, target: &str| -> _ {
@@ -1156,18 +1143,16 @@ fn modify_members<'a>(
             .as_array_mut()
             .with_context(|| format!("`workspace.{}` must be an array", field))?;
         for add in *add {
-            let add = relative_to_root(add)?;
+            let add = relative_to_root(add).as_str();
             if array.iter().all(|m| !same_paths(m, add)) {
                 if !dry_run {
-                    array
-                        .push(add)
-                        .map_err(|_| anyhow!("`workspace.{}` must be an string array", field))?;
+                    array.push(add);
                 }
                 stderr.status("Adding", format!("{:?} to `workspace.{}`", add, field))?;
             }
         }
         for rm in *rm {
-            let rm = relative_to_root(rm)?;
+            let rm = relative_to_root(rm).as_str();
             let i = array.iter().position(|m| same_paths(m, rm));
             if let Some(i) = i {
                 if !dry_run {

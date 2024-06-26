@@ -1,0 +1,9 @@
+---
+source: tests/exclude.rs
+expression: "fs::read_to_string(tempdir_path.join(\"Cargo.toml\")).unwrap()"
+---
+[workspace]
+members = ["a", "b", "c"]
+exclude = []
+[workspace.dependencies]
+rand = "0.8"

@@ -1,0 +1,11 @@
+---
+source: tests/exclude.rs
+expression: "String::from_utf8_lossy(&stderr)"
+---
+    Updating "rand" in b
+    Removing "b" from `workspace.members`
+      Adding "b" to `workspace.exclude`
+    Removing "c" from `workspace.members`
+      Adding "c" to `workspace.exclude`
+warning: `workspace` unchanged
+warning: not modifying the manifest due to dry run

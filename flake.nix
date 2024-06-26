@@ -11,13 +11,15 @@
         {
           devShells.default = pkgs.mkShell {
             nativeBuildInputs = with pkgs; [
-              rustc
               cargo
-              clippy
-              clang
-              pkg-config
+              cargo-insta
               cargo-nextest
+              clang
+              clippy
+              entr
               just
+              pkg-config
+              rustc
             ];
 
             buildInputs = with pkgs; [

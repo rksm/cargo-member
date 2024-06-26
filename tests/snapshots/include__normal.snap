@@ -1,0 +1,12 @@
+---
+source: tests/include.rs
+expression: "fs::read_to_string(tempdir_path.join(\"b\").join(\"Cargo.toml\")).unwrap()"
+---
+[package]
+name = "b"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "~2.5"
+rand = "0.8"

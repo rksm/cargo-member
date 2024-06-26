@@ -1,5 +1,5 @@
-use crate::{Cp, Deactivate, Exclude, Focus, Include, Mv, New, Rm};
 use anyhow::{bail, Context as _};
+use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use cargo_metadata::Metadata;
 use easy_ext::ext;
 use env_logger::fmt::WriteStyle;
@@ -7,13 +7,14 @@ use serde::Deserialize;
 use std::{
     env,
     io::Write as _,
-    path::{Path, PathBuf},
     process::{self, Stdio},
     str,
 };
 use structopt::{clap::AppSettings, StructOpt};
-use strum::{EnumString, EnumVariantNames, IntoStaticStr, VariantNames as _};
+use strum::{EnumString, IntoStaticStr, VariantNames};
 use termcolor::{BufferedStandardStream, ColorSpec, WriteColor};
+
+use crate::{Cp, Deactivate, Exclude, Focus, Include, Mv, New, Rm};
 
 #[derive(StructOpt, Debug)]
 #[structopt(
@@ -352,7 +353,7 @@ pub struct CargoMemberMv {
 }
 
 /// Coloring.
-#[derive(EnumString, EnumVariantNames, IntoStaticStr, Clone, Copy, Debug)]
+#[derive(EnumString, VariantNames, IntoStaticStr, Clone, Copy, Debug)]
 #[strum(serialize_all = "kebab-case")]
 pub enum ColorChoice {
     Auto,
@@ -379,7 +380,10 @@ pub struct Context<W> {
 
 impl<W> Context<W> {
     pub fn new(stderr: W) -> anyhow::Result<Self> {
-        let cwd = env::current_dir().with_context(|| "failed to get CWD")?;
+        let cwd = env::current_dir()
+            .with_context(|| "failed to get CWD")?
+            .try_into()
+            .expect("CWD is not UTF-8");
         let stderr_redirection = Stdio::inherit();
         Ok(Self {
             cwd,

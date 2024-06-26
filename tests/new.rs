@@ -1,10 +1,10 @@
 #![warn(rust_2018_idioms)]
 
+use camino::Utf8Path as Path;
 use cargo_metadata::MetadataCommand;
 use difference::assert_diff;
 use std::{
     fs, io,
-    path::Path,
     process::Stdio,
     str::{self, Utf8Error},
 };
@@ -14,13 +14,14 @@ use termcolor::NoColor;
 #[test]
 fn new() -> anyhow::Result<()> {
     let tempdir = TempDir::new("cargo-member-new")?;
+    let tempdir_path = Path::from_path(tempdir.path()).expect("invalid utf8 path");
 
-    fs::write(tempdir.path().join("Cargo.toml"), ORIGINAL)?;
-    cargo_metadata(&tempdir.path().join("Cargo.toml"), &[]).unwrap_err();
+    fs::write(tempdir_path.join("Cargo.toml"), ORIGINAL)?;
+    cargo_metadata(&tempdir_path.join("Cargo.toml"), &[]).unwrap_err();
 
     let mut stderr = vec![];
 
-    cargo_member::New::new(tempdir.path(), &tempdir.path().join("a"))
+    cargo_member::New::new(tempdir_path, &tempdir_path.join("a"))
         .cargo_new_registry(None::<&str>)
         .cargo_new_vcs(None::<&str>)
         .cargo_new_lib(false)
@@ -31,12 +32,12 @@ fn new() -> anyhow::Result<()> {
         .stderr(NoColor::new(&mut stderr))
         .exec()?;
 
-    assert_manifest(&tempdir.path().join("Cargo.toml"), EXPECTED_MANIFEST)?;
+    assert_manifest(&tempdir_path.join("Cargo.toml"), EXPECTED_MANIFEST)?;
     assert_stderr(
         &stderr,
-        &EXPECTED_STDERR.replace("{}", &tempdir.path().join("Cargo.lock").to_string_lossy()),
+        &EXPECTED_STDERR.replace("{}", tempdir_path.join("Cargo.lock").as_ref()),
     )?;
-    cargo_metadata(&tempdir.path().join("Cargo.toml"), &["--locked"])?;
+    cargo_metadata(&tempdir_path.join("Cargo.toml"), &["--locked"])?;
     return Ok(());
 
     static ORIGINAL: &str = r#"[workspace]
